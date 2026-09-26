@@ -194,16 +194,27 @@ def normalise_lever(raw, company_name):
         out.append({"title": title, "location": location, "url": url, "company": company_name})
     return out
 
+CA_CITIES = ["california", " ca ", "san francisco", "sf", "los angeles", "la", 
+             "san jose", "cupertino", "mountain view", "palo alto", "santa clara",
+             "sunnyvale", "menlo park", "redwood city", "irvine", "san diego"]
+
+WEST_COAST = ["california", " ca,", "san francisco", "sf", "los angeles", "la,",
+              "san jose", "cupertino", "mountain view", "palo alto", "santa clara",
+              "sunnyvale", "menlo park", "redwood city", "irvine", "san diego",
+              "seattle", "washington", " wa,", "bellevue", "redmond", "kirkland",
+              "oregon", " or,", "portland",
+              "west coast", "remote"]
+
 def is_relevant(job):
     title = job["title"].lower()
-    # Must contain a keyword
+    location = job.get("location", "").lower()
     if not any(k in title for k in KEYWORDS):
         return False
-    # Exclude senior/director/etc unless it's Designer II which is fine
     if any(ex in title for ex in EXCLUDE):
         return False
+    if not any(place in location for place in WEST_COAST):
+        return False
     return True
-
 # ── Email ─────────────────────────────────────────────────────────────────────
 
 def build_email(jobs_by_company):
