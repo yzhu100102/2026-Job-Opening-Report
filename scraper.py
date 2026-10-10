@@ -256,8 +256,8 @@ def is_relevant(job):
         return False
     if any(ex in title for ex in EXCLUDE):
         return False
-    if not any(place in location for place in WEST_COAST):
-        return False
+    # if not any(place in location for place in WEST_COAST):
+    #     return False
     return True
 
 # ── Email ─────────────────────────────────────────────────────────────────────
