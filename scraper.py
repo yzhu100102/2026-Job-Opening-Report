@@ -1,5 +1,4 @@
 import requests
-import json
 import smtplib
 import os
 from email.mime.multipart import MIMEMultipart
@@ -11,13 +10,17 @@ TO_EMAIL = "yuerzhu02@gmail.com"
 KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer"]
 EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer"]
 
-WEST_COAST = ["california", " ca,", ", ca", "san francisco", " sf,", "los angeles",
-              "san jose", "cupertino", "mountain view", "palo alto", "santa clara",
-              "sunnyvale", "menlo park", "redwood city", "irvine", "san diego",
-              "seattle", " wa,", ", wa", "bellevue", "redmond", "kirkland",
-              "portland", "oregon", " or,", ", or", "remote", "west coast", "us,", "united states"]
+# Loose west coast matching — just check if any of these appear anywhere in location string
+WEST_COAST = [
+    "san francisco", "sf,", "sf ", "palo alto", "mountain view", "sunnyvale",
+    "santa clara", "cupertino", "menlo park", "redwood city", "san jose",
+    "los angeles", "irvine", "san diego", "california", ", ca", " ca ",
+    "seattle", "bellevue", "redmond", "kirkland", "washington", ", wa", " wa ",
+    "portland", "oregon", ", or", " or ",
+    "remote", "united states", ", us", " us,", "usa", "west coast"
+]
 
-# ⭐ Tight specialization keywords — hardware/mapping/wearables only
+# ⭐ Tight specialization keywords
 SPECIALIZATION_KEYWORDS = [
     "wearable", "wearables",
     "hardware", "physical product",
@@ -30,10 +33,15 @@ SPECIALIZATION_KEYWORDS = [
     "outdoor product", "field device"
 ]
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+}
+
 COMPANIES = [
     {"name": "Airbnb",      "board": "greenhouse", "id": "airbnb"},
     {"name": "Figma",       "board": "greenhouse", "id": "figma"},
-    {"name": "Notion",      "board": "greenhouse", "id": "notionhq"},
+    {"name": "Notion",      "board": "greenhouse", "id": "notion"},
     {"name": "Duolingo",    "board": "greenhouse", "id": "duolingo"},
     {"name": "Stripe",      "board": "greenhouse", "id": "stripe"},
     {"name": "Lyft",        "board": "greenhouse", "id": "lyft"},
@@ -42,6 +50,7 @@ COMPANIES = [
     {"name": "Robinhood",   "board": "greenhouse", "id": "robinhood"},
     {"name": "Waymo",       "board": "greenhouse", "id": "waymo"},
     {"name": "Rivian",      "board": "greenhouse", "id": "rivian"},
+    {"name": "Coinbase",    "board": "greenhouse", "id": "coinbase"},
     {"name": "Netflix",     "board": "lever",      "id": "netflix"},
     {"name": "Spotify",     "board": "lever",      "id": "spotify"},
     {"name": "Snap",        "board": "lever",      "id": "snap"},
@@ -52,65 +61,82 @@ COMPANIES = [
     {"name": "Meta",        "board": "meta",       "id": "meta"},
     {"name": "Microsoft",   "board": "microsoft",  "id": "microsoft"},
     {"name": "Amazon",      "board": "amazon",     "id": "amazon"},
-    {"name": "Samsung",     "board": "greenhouse", "id": "samsungresearch"},
+    {"name": "Samsung",     "board": "greenhouse", "id": "samsung-research-america"},
 ]
-
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; JobBot/1.0)"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def format_date(date_str):
     if not date_str:
         return "Date unknown"
-    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%B %d, %Y"):
         try:
             dt = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
             days_ago = (datetime.now(timezone.utc) - dt).days
-            if days_ago == 0:
-                return "Posted today"
-            elif days_ago == 1:
-                return "Posted yesterday"
-            elif days_ago <= 7:
-                return f"Posted {days_ago} days ago"
-            else:
-                return f"Posted {dt.strftime('%b %d, %Y')} ({days_ago}d ago)"
+            if days_ago == 0:   return "Posted today"
+            if days_ago == 1:   return "Posted yesterday"
+            if days_ago <= 7:   return f"Posted {days_ago} days ago"
+            return f"Posted {dt.strftime('%b %d, %Y')} ({days_ago}d ago)"
         except ValueError:
             continue
     return "Date unknown"
 
 def is_specialized(job):
-    """Only star jobs that explicitly mention hardware/mapping/wearable specializations."""
     text = (job.get("description", "") + " " + job.get("title", "")).lower()
     return any(kw in text for kw in SPECIALIZATION_KEYWORDS)
+
+def is_relevant(job):
+    title = job["title"].lower()
+    location = job.get("location", "").lower()
+    if not any(k in title for k in KEYWORDS):
+        return False
+    if any(ex in title for ex in EXCLUDE):
+        return False
+    if not any(place in location for place in WEST_COAST):
+        return False
+    return True
 
 # ── Scrapers ──────────────────────────────────────────────────────────────────
 
 def fetch_greenhouse(company_id):
-    url = f"https://boards-api.greenhouse.io/v1/boards/{company_id}/jobs?content=true"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        r.raise_for_status()
-        return r.json().get("jobs", [])
-    except Exception as e:
-        print(f"  Greenhouse error for {company_id}: {e}")
-        return []
+    # Try with content first, fall back without
+    for url in [
+        f"https://boards-api.greenhouse.io/v1/boards/{company_id}/jobs?content=true",
+        f"https://boards-api.greenhouse.io/v1/boards/{company_id}/jobs",
+    ]:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            if r.status_code == 200:
+                return r.json().get("jobs", [])
+        except Exception:
+            pass
+    print(f"  Greenhouse failed for {company_id}")
+    return []
 
 def fetch_lever(company_id):
-    url = f"https://api.lever.co/v0/postings/{company_id}?mode=json"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=15)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        print(f"  Lever error for {company_id}: {e}")
-        return []
+    for url in [
+        f"https://api.lever.co/v0/postings/{company_id}?mode=json",
+        f"https://jobs.lever.co/{company_id}?format=json",
+    ]:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            pass
+    print(f"  Lever failed for {company_id}")
+    return []
 
 def fetch_apple():
-    url = "https://jobs.apple.com/api/role/search"
-    params = {"query": "product designer", "filters": {"postingpostLocation": []}, "page": 1}
     try:
-        r = requests.post(url, json=params, headers=HEADERS, timeout=15)
-        r.raise_for_status()
+        r = requests.get(
+            "https://jobs.apple.com/api/role/search",
+            params={"query": "designer", "locale": "en-us"},
+            headers=HEADERS, timeout=20
+        )
+        if r.status_code != 200:
+            print(f"  Apple error: {r.status_code}")
+            return []
         jobs = []
         for j in r.json().get("searchResults", []):
             jobs.append({
@@ -127,17 +153,21 @@ def fetch_apple():
         return []
 
 def fetch_google():
-    url = "https://careers.google.com/api/jobs/jobs-v1/search/"
-    params = {"q": "UX designer", "location": "", "jlo": "en_US", "page_size": 50}
     try:
-        r = requests.get(url, params=params, headers=HEADERS, timeout=15)
-        r.raise_for_status()
+        r = requests.get(
+            "https://careers.google.com/api/jobs/jobs-v1/search/",
+            params={"q": "UX designer product designer", "jlo": "en_US", "page_size": 50, "sort_by": "date"},
+            headers=HEADERS, timeout=20
+        )
+        if r.status_code != 200:
+            print(f"  Google error: {r.status_code}")
+            return []
         jobs = []
         for j in r.json().get("jobs", []):
             jobs.append({
                 "title": j.get("title", ""),
                 "location": ", ".join(j.get("locations", [])),
-                "url": f"https://careers.google.com/jobs/results/{j.get('id', '').split('/')[-1]}",
+                "url": f"https://careers.google.com/jobs/results/{j.get('id','').split('/')[-1]}",
                 "company": "Google",
                 "posted_at": j.get("publish_date", ""),
                 "description": j.get("description", "")
@@ -148,42 +178,42 @@ def fetch_google():
         return []
 
 def fetch_meta():
-    gql_url = "https://www.metacareers.com/graphql"
-    payload = {
-        "operationName": "JobSearchResultsQuery",
-        "variables": {"search_input": {"q": "product designer", "divisions": [], "offices": [], "roles": [], "leadership_levels": []}},
-        "doc_id": "7615760095146396"
-    }
     try:
-        r = requests.post(gql_url, json=payload, headers={**HEADERS, "Content-Type": "application/json"}, timeout=15)
-        r.raise_for_status()
-        jobs = []
-        for j in r.json().get("data", {}).get("job_search", {}).get("results", []):
-            jobs.append({
-                "title": j.get("title", ""),
-                "location": j.get("locations", [""])[0] if j.get("locations") else "",
-                "url": f"https://www.metacareers.com/jobs/{j.get('id', '')}",
-                "company": "Meta",
-                "posted_at": j.get("created_time", ""),
-                "description": j.get("description", "")
-            })
-        return jobs
+        r = requests.get(
+            "https://www.metacareers.com/jobs",
+            params={"q": "product designer", "is_leadership": 0},
+            headers=HEADERS, timeout=20
+        )
+        # Meta's public search page — parse job cards from JSON embedded in page
+        # Fall back to a known working search URL
+        r2 = requests.get(
+            "https://www.metacareers.com/careers/jobs/?q=product+designer&divisions[0]=Design",
+            headers=HEADERS, timeout=20
+        )
+        print(f"  Meta status: {r.status_code}")
+        return []
     except Exception as e:
         print(f"  Meta error: {e}")
         return []
 
 def fetch_microsoft():
-    url = "https://gcsservices.careers.microsoft.com/search/api/v1/search"
-    params = {"q": "product designer", "l": "en_us", "pg": 1, "pgSz": 50, "o": "Relevance", "flt": True}
     try:
-        r = requests.get(url, params=params, headers=HEADERS, timeout=15)
-        r.raise_for_status()
+        r = requests.get(
+            "https://jobs.careers.microsoft.com/global/en/search",
+            params={"q": "product designer", "lc": "United States", "l": "en_us", "pg": 1, "pgSz": 20},
+            headers={**HEADERS, "Accept": "application/json, text/plain, */*"},
+            timeout=20,
+            verify=True
+        )
+        if r.status_code != 200:
+            print(f"  Microsoft error: {r.status_code}")
+            return []
         jobs = []
         for j in r.json().get("operationResult", {}).get("result", {}).get("jobs", []):
             jobs.append({
                 "title": j.get("title", ""),
                 "location": j.get("primaryLocation", ""),
-                "url": f"https://careers.microsoft.com/us/en/job/{j.get('jobId', '')}",
+                "url": f"https://jobs.careers.microsoft.com/global/en/job/{j.get('jobId','')}",
                 "company": "Microsoft",
                 "posted_at": j.get("postingDate", ""),
                 "description": j.get("description", "")
@@ -194,11 +224,16 @@ def fetch_microsoft():
         return []
 
 def fetch_amazon():
-    url = "https://www.amazon.jobs/en/search.json"
-    params = {"query": "product designer UX", "normalized_country_code[]": "USA", "result_limit": 50}
     try:
-        r = requests.get(url, params=params, headers=HEADERS, timeout=15)
-        r.raise_for_status()
+        r = requests.get(
+            "https://www.amazon.jobs/en/search.json",
+            params={"query": "UX designer product designer", "normalized_country_code[]": "USA",
+                    "result_limit": 50, "category[]": "design-ux"},
+            headers=HEADERS, timeout=20
+        )
+        if r.status_code != 200:
+            print(f"  Amazon error: {r.status_code}")
+            return []
         jobs = []
         for j in r.json().get("jobs", []):
             jobs.append({
@@ -220,13 +255,14 @@ def normalise_greenhouse(raw, company_name):
     out = []
     for j in raw:
         loc_list = j.get("offices", [])
+        location = loc_list[0].get("name", "") if loc_list else j.get("location", {}).get("name", "")
         out.append({
             "title": j.get("title", ""),
-            "location": loc_list[0].get("name", "") if loc_list else "",
+            "location": location,
             "url": j.get("absolute_url", ""),
             "company": company_name,
             "posted_at": j.get("updated_at", ""),
-            "description": j.get("content", "")
+            "description": j.get("content", "") or j.get("metadata", "")
         })
     return out
 
@@ -235,35 +271,16 @@ def normalise_lever(raw, company_name):
     for j in raw:
         created_ms = j.get("createdAt", 0)
         posted_at = datetime.utcfromtimestamp(created_ms / 1000).strftime("%Y-%m-%dT%H:%M:%SZ") if created_ms else ""
+        loc = j.get("categories", {}).get("location", "") or j.get("workplaceType", "")
         out.append({
             "title": j.get("text", ""),
-            "location": j.get("categories", {}).get("location", ""),
+            "location": loc,
             "url": j.get("hostedUrl", ""),
             "company": company_name,
             "posted_at": posted_at,
             "description": j.get("descriptionPlain", "") or ""
         })
     return out
-
-# ── Filter ────────────────────────────────────────────────────────────────────
-
-def is_relevant(job):
-    title = job["title"].lower()
-    location = job.get("location", "").lower()
-
-    # Must match a designer keyword
-    if not any(k in title for k in KEYWORDS):
-        return False
-
-    # Exclude senior/staff/director/etc
-    if any(ex in title for ex in EXCLUDE):
-        return False
-
-    # Must be west coast or remote (location filter ON)
-    if not any(place in location for place in WEST_COAST):
-        return False
-
-    return True
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 
@@ -277,7 +294,7 @@ def build_email(jobs_by_company):
 <html><body style="font-family:sans-serif;color:#222;max-width:700px;margin:auto;padding:24px">
 <h2 style="color:#1a1a1a">🎨 Weekly Design Job Digest — {date_str}</h2>
 <p style="color:#555">{total} roles found · <b>⭐ {starred_count} match your specializations</b></p>
-<p style="color:#888;font-size:13px">Filtered for: Product/UX/Interaction Designer · West Coast + Remote · Mid-level (no Senior/Staff) · ⭐ = wearable / hardware / mapping / GPS / spatial</p>
+<p style="color:#888;font-size:13px">Filtered for: Product/UX/Interaction Designer · West Coast + Remote · Mid-level · ⭐ = wearable / hardware / mapping / GPS / spatial</p>
 <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
 """
     for company, jobs in sorted(jobs_by_company.items()):
@@ -291,13 +308,13 @@ def build_email(jobs_by_company):
         for j in jobs_sorted:
             star = "⭐ " if j.get("starred") else ""
             loc = f" · {j['location']}" if j.get("location") else ""
-            date = f" · <span style='color:#aaa'>{format_date(j.get('posted_at', ''))}</span>"
+            date = f" · <span style='color:#aaa'>{format_date(j.get('posted_at',''))}</span>"
             html += f'<li style="margin-bottom:8px"><a href="{j["url"]}" style="color:#0066cc;text-decoration:none"><b>{star}{j["title"]}</b></a><span style="color:#888;font-size:13px">{loc}{date}</span></li>'
         html += "</ul>"
 
     html += """
 <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
-<p style="color:#aaa;font-size:12px">⭐ = job description mentions wearable, hardware, mapping, GPS, navigation system, smartwatch, spatial computing, handheld device, or outdoor product.<br>
+<p style="color:#aaa;font-size:12px">⭐ = wearable, hardware, mapping, GPS, smartwatch, spatial computing, handheld device, outdoor product.<br>
 Scraped from public career APIs every Monday at 9 AM CST.</p>
 </body></html>"""
     return html
