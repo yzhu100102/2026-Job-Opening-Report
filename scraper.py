@@ -116,7 +116,7 @@ def build_email(jobs_by_company):
         for j in jobs_sorted:
             star = "⭐ " if j.get("starred") else ""
             loc = f" · {j['location']}" if j.get("location") else ""
-            date = f" · <span style='color:#aaa'>{format_date(j.get('posted_at',''))}</span>"
+            date = f" · <span style=\'color:#aaa\'>{format_date(j.get(\'posted_at\',\'\'))}</span>"
             html += f'<li style="margin-bottom:8px"><a href="{j["url"]}" style="color:#0066cc"><b>{star}{j["title"]}</b></a><span style="color:#888;font-size:13px">{loc}{date}</span></li>'
         html += "</ul>"
     html += """<hr style="border:none;border-top:1px solid #eee;margin:20px 0">
