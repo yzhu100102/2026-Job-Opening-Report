@@ -1,6 +1,7 @@
 import requests
 import smtplib
 import os
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timezone
@@ -10,7 +11,6 @@ TO_EMAIL = "yuerzhu02@gmail.com"
 
 EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer"]
 
-# ⭐ Tight specialization keywords
 SPECIALIZATION_KEYWORDS = [
     "wearable", "wearables",
     "hardware", "physical product",
@@ -23,14 +23,19 @@ SPECIALIZATION_KEYWORDS = [
     "outdoor product", "field device"
 ]
 
-# Companies to search — JSearch will find their listings across job boards
-COMPANIES = [
-    "Apple", "Google", "Meta", "Microsoft", "Amazon",
-    "Airbnb", "Figma", "Notion", "Stripe", "Lyft",
-    "Dropbox", "Pinterest", "Robinhood", "Waymo", "Rivian",
-    "Coinbase", "Netflix", "Spotify", "Snap", "Airtable",
-    "Samsung", "Duolingo", "Twitch", "Adobe", "Uber",
-    "DoorDash", "Instacart", "Canva", "Atlassian", "Salesforce"
+# Reduced to 10 searches to stay within free tier rate limits
+# Each search covers multiple companies via the query
+SEARCHES = [
+    "product designer at Apple OR Google OR Meta in California OR Seattle OR remote",
+    "UX designer at Microsoft OR Amazon OR Adobe in Seattle OR California OR remote",
+    "product designer at Airbnb OR Lyft OR Uber in San Francisco OR remote",
+    "product designer at Figma OR Notion OR Airtable in San Francisco OR remote",
+    "product designer at Snap OR Pinterest OR Robinhood in California OR remote",
+    "product designer at Spotify OR Netflix OR Twitch in California OR remote",
+    "product designer at Waymo OR Rivian OR Coinbase in California OR remote",
+    "UX designer at Stripe OR Dropbox OR Canva in San Francisco OR remote",
+    "product designer at Samsung OR Duolingo OR Atlassian in California OR remote",
+    "interaction designer OR UX designer hardware wearable mapping in California OR Seattle OR remote",
 ]
 
 JSEARCH_URL = "https://jsearch.p.rapidapi.com/search"
@@ -39,11 +44,22 @@ JSEARCH_HEADERS = {
     "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
 }
 
+KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer"]
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def format_date(date_str):
     if not date_str:
         return "Date unknown"
+    try:
+        dt = datetime.fromtimestamp(int(date_str), tz=timezone.utc)
+        days_ago = (datetime.now(timezone.utc) - dt).days
+        if days_ago == 0:   return "Posted today"
+        if days_ago == 1:   return "Posted yesterday"
+        if days_ago <= 7:   return f"Posted {days_ago} days ago"
+        return f"Posted {dt.strftime('%b %d, %Y')} ({days_ago}d ago)"
+    except Exception:
+        pass
     for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
         try:
             dt = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
@@ -54,16 +70,6 @@ def format_date(date_str):
             return f"Posted {dt.strftime('%b %d, %Y')} ({days_ago}d ago)"
         except ValueError:
             continue
-    # Try unix timestamp
-    try:
-        dt = datetime.fromtimestamp(int(date_str), tz=timezone.utc)
-        days_ago = (datetime.now(timezone.utc) - dt).days
-        if days_ago == 0:   return "Posted today"
-        if days_ago == 1:   return "Posted yesterday"
-        if days_ago <= 7:   return f"Posted {days_ago} days ago"
-        return f"Posted {dt.strftime('%b %d, %Y')} ({days_ago}d ago)"
-    except Exception:
-        pass
     return "Date unknown"
 
 def is_specialized(job):
@@ -72,8 +78,7 @@ def is_specialized(job):
 
 def is_relevant(title):
     t = title.lower()
-    keywords = ["product designer", "ux designer", "interaction designer", "ui designer"]
-    if not any(k in t for k in keywords):
+    if not any(k in t for k in KEYWORDS):
         return False
     if any(ex in t for ex in EXCLUDE):
         return False
@@ -81,51 +86,47 @@ def is_relevant(title):
 
 # ── JSearch fetcher ───────────────────────────────────────────────────────────
 
-def search_jobs(company):
-    """Search JSearch for designer roles at a specific company on the west coast."""
-    query = f"product designer OR ux designer at {company} in San Francisco OR Seattle OR Los Angeles OR remote"
+def run_search(query):
     try:
         r = requests.get(
             JSEARCH_URL,
             headers=JSEARCH_HEADERS,
             params={
                 "query": query,
-                "num_pages": "2",
+                "num_pages": "1",
                 "date_posted": "month",
-                "employment_types": "FULLTIME",
-                "job_requirements": "no_degree,under_3_years_experience,more_than_3_years_experience",
+                "country": "us",
             },
-            timeout=20
+            timeout=30
         )
+        if r.status_code == 429:
+            print(f"  Rate limited, waiting 10s...")
+            time.sleep(10)
+            r = requests.get(JSEARCH_URL, headers=JSEARCH_HEADERS,
+                params={"query": query, "num_pages": "1", "date_posted": "month", "country": "us"},
+                timeout=30)
         if r.status_code != 200:
-            print(f"  JSearch error for {company}: {r.status_code} {r.text[:100]}")
+            print(f"  Error {r.status_code}: {r.text[:100]}")
             return []
         return r.json().get("data", [])
     except Exception as e:
-        print(f"  JSearch error for {company}: {e}")
+        print(f"  Exception: {e}")
         return []
 
-def normalise_jsearch(raw, company_name):
-    """Convert JSearch results to our standard job format."""
+def normalise(raw):
     out = []
     for j in raw:
-        # Only keep jobs actually from this company
-        employer = j.get("employer_name", "").lower()
-        if company_name.lower() not in employer:
-            continue
-
         location_parts = []
-        if j.get("job_city"):      location_parts.append(j["job_city"])
-        if j.get("job_state"):     location_parts.append(j["job_state"])
-        if j.get("job_country"):   location_parts.append(j["job_country"])
+        if j.get("job_city"):    location_parts.append(j["job_city"])
+        if j.get("job_state"):   location_parts.append(j["job_state"])
         location = ", ".join(location_parts) if location_parts else (
             "Remote" if j.get("job_is_remote") else "")
 
         out.append({
             "title": j.get("job_title", ""),
+            "company": j.get("employer_name", ""),
             "location": location,
             "url": j.get("job_apply_link") or j.get("job_google_link", ""),
-            "company": j.get("employer_name", company_name),
             "posted_at": str(j.get("job_posted_at_timestamp", "")),
             "description": j.get("job_description", "")
         })
@@ -184,21 +185,35 @@ def send_email(html_body):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    jobs_by_company = {}
+    all_jobs = []
+    seen_urls = set()
 
-    for company in COMPANIES:
-        print(f"Searching {company}...")
-        raw = search_jobs(company)
-        jobs = normalise_jsearch(raw, company)
+    for i, query in enumerate(SEARCHES):
+        print(f"Search {i+1}/{len(SEARCHES)}: {query[:60]}...")
+        raw = run_search(query)
+        jobs = normalise(raw)
 
         for j in jobs:
+            if j["url"] in seen_urls:
+                continue
+            if not is_relevant(j["title"]):
+                continue
+            seen_urls.add(j["url"])
             j["starred"] = is_specialized(j)
+            all_jobs.append(j)
 
-        filtered = [j for j in jobs if is_relevant(j["title"])]
-        starred_n = sum(1 for j in filtered if j.get("starred"))
-        print(f"  → {len(filtered)} relevant roles ({starred_n} starred)")
-        if filtered:
-            jobs_by_company[company] = filtered
+        print(f"  → {len(jobs)} results, {len(all_jobs)} total unique relevant so far")
+        time.sleep(3)  # Be polite to the API between requests
+
+    # Group by company
+    jobs_by_company = {}
+    for j in all_jobs:
+        company = j["company"]
+        if company not in jobs_by_company:
+            jobs_by_company[company] = []
+        jobs_by_company[company].append(j)
+
+    print(f"\nTotal: {len(all_jobs)} roles across {len(jobs_by_company)} companies")
 
     if jobs_by_company:
         html = build_email(jobs_by_company)
