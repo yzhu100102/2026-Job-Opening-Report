@@ -38,7 +38,7 @@ SEARCHES = [
     "interaction designer OR UX designer hardware wearable mapping in California OR Seattle OR remote",
 ]
 
-JSEARCH_URL = "https://jsearch.p.rapidapi.com/search"
+JSEARCH_URL = "https://jsearch.p.rapidapi.com/search-v2"
 JSEARCH_HEADERS = {
     "X-RapidAPI-Key": "827dd99303msnf65635bee57d867p1d5f8djsn2100846c96ad",
     "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
