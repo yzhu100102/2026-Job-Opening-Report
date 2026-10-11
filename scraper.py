@@ -2,10 +2,11 @@ import requests
 import smtplib
 import os
 import time
-import xml.etree.ElementTree as ET
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 
 TO_EMAIL = "yuerzhu02@gmail.com"
 EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer"]
@@ -23,47 +24,58 @@ SPECIALIZATION_KEYWORDS = [
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
 }
 
-# ── Greenhouse companies ──────────────────────────────────────────────────────
+WEST_COAST = [
+    "san francisco", "palo alto", "mountain view", "sunnyvale", "santa clara",
+    "cupertino", "menlo park", "redwood city", "san jose", "los angeles",
+    "irvine", "san diego", "california", ", ca", " ca,", "(ca)",
+    "seattle", "bellevue", "redmond", "kirkland", "washington", ", wa", " wa,",
+    "portland", "oregon", ", or", "remote", "united states", "usa", ", us,",
+    "anywhere", "distributed", "hybrid"
+]
+
+# Greenhouse companies
 GREENHOUSE_COMPANIES = [
-    ("Airbnb",      "airbnb"),
-    ("Figma",       "figma"),
-    ("Notion",      "notion"),
-    ("Duolingo",    "duolingo"),
-    ("Stripe",      "stripe"),
-    ("Lyft",        "lyft"),
-    ("Dropbox",     "dropbox"),
-    ("Pinterest",   "pinterest"),
-    ("Robinhood",   "robinhood"),
-    ("Waymo",       "waymo"),
-    ("Rivian",      "rivian"),
-    ("Coinbase",    "coinbase"),
+    ("Airbnb",    "airbnb"),
+    ("Figma",     "figma"),
+    ("Duolingo",  "duolingo"),
+    ("Stripe",    "stripe"),
+    ("Lyft",      "lyft"),
+    ("Dropbox",   "dropbox"),
+    ("Pinterest", "pinterest"),
+    ("Robinhood", "robinhood"),
+    ("Waymo",     "waymo"),
+    ("Coinbase",  "coinbase"),
+    ("Notion",    "notion"),
+    ("Rivian",    "rivian"),
+    ("DoorDash",  "doordash"),
+    ("Instacart", "instacart"),
 ]
 
-# ── Lever companies ───────────────────────────────────────────────────────────
+# Lever companies
 LEVER_COMPANIES = [
-    ("Netflix",     "netflix"),
-    ("Spotify",     "spotify"),
-    ("Snap",        "snap"),
-    ("Twitch",      "twitch"),
-    ("Airtable",    "airtable"),
+    ("Netflix",   "netflix"),
+    ("Spotify",   "spotify"),
+    ("Snap",      "snap"),
+    ("Twitch",    "twitch"),
+    ("Airtable",  "airtable"),
 ]
 
-# ── LinkedIn RSS searches (covers Apple, Google, Meta, Microsoft, Amazon etc) ─
+# LinkedIn job searches — returns HTML job cards, parse titles + links
 LINKEDIN_SEARCHES = [
-    ("Apple",       "product designer Apple",       "San Francisco"),
-    ("Apple",       "UX designer Apple",            "Seattle"),
-    ("Google",      "product designer Google",      "San Francisco"),
-    ("Google",      "UX designer Google",           "Seattle"),
-    ("Meta",        "product designer Meta",        "San Francisco"),
-    ("Microsoft",   "UX designer Microsoft",        "Seattle"),
-    ("Amazon",      "product designer Amazon",      "Seattle"),
-    ("Adobe",       "product designer Adobe",       "San Francisco"),
-    ("Uber",        "product designer Uber",        "San Francisco"),
-    ("Canva",       "product designer Canva",       "remote"),
-    ("Samsung",     "UX designer Samsung",          "San Francisco"),
-    ("Atlassian",   "product designer Atlassian",   "San Francisco"),
+    ("Apple",       "product designer Apple"),
+    ("Google",      "product designer Google"),
+    ("Meta",        "product designer Meta"),
+    ("Microsoft",   "UX designer Microsoft"),
+    ("Amazon",      "product designer Amazon"),
+    ("Adobe",       "product designer Adobe"),
+    ("Uber",        "product designer Uber"),
+    ("Samsung",     "UX designer Samsung"),
+    ("Atlassian",   "product designer Atlassian"),
+    ("Canva",       "product designer Canva"),
 ]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,6 +117,12 @@ def is_relevant(title):
     if any(ex in t for ex in EXCLUDE): return False
     return True
 
+def is_west_coast(location):
+    if not location:
+        return False
+    loc = location.lower()
+    return any(place in loc for place in WEST_COAST)
+
 # ── Scrapers ──────────────────────────────────────────────────────────────────
 
 def fetch_greenhouse(company_name, company_id):
@@ -132,80 +150,76 @@ def fetch_greenhouse(company_name, company_id):
         return []
 
 def fetch_lever(company_name, company_id):
-    url = f"https://api.lever.co/v0/postings/{company_id}?mode=json"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=20)
-        if r.status_code != 200:
-            print(f"  Lever error for {company_name}: {r.status_code}")
-            return []
-        jobs = []
-        for j in r.json():
-            created_ms = j.get("createdAt", 0)
-            posted_at = datetime.utcfromtimestamp(created_ms / 1000).strftime("%Y-%m-%dT%H:%M:%SZ") if created_ms else ""
-            loc = j.get("categories", {}).get("location", "") or j.get("workplaceType", "")
-            jobs.append({
-                "title": j.get("text", ""),
-                "company": company_name,
-                "location": loc,
-                "url": j.get("hostedUrl", ""),
-                "posted_at": posted_at,
-                "description": j.get("descriptionPlain", "") or ""
-            })
-        return jobs
-    except Exception as e:
-        print(f"  Lever exception for {company_name}: {e}")
-        return []
+    for url in [
+        f"https://api.lever.co/v0/postings/{company_id}?mode=json",
+        f"https://jobs.lever.co/{company_id}?format=json",
+    ]:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            if r.status_code == 200:
+                jobs = []
+                for j in r.json():
+                    created_ms = j.get("createdAt", 0)
+                    posted_at = datetime.utcfromtimestamp(created_ms / 1000).strftime("%Y-%m-%dT%H:%M:%SZ") if created_ms else ""
+                    loc = j.get("categories", {}).get("location", "") or j.get("workplaceType", "")
+                    jobs.append({
+                        "title": j.get("text", ""),
+                        "company": company_name,
+                        "location": loc,
+                        "url": j.get("hostedUrl", ""),
+                        "posted_at": posted_at,
+                        "description": j.get("descriptionPlain", "") or ""
+                    })
+                return jobs
+        except Exception:
+            pass
+    print(f"  Lever failed for {company_name}")
+    return []
 
-def fetch_linkedin_rss(company_name, keywords, location):
-    """Fetch jobs via LinkedIn's public RSS feed."""
-    url = "https://www.linkedin.com/jobs/search/"
+def fetch_linkedin(company_name, keywords):
+    """Fetch LinkedIn jobs via their guest search API."""
+    url = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
     params = {
         "keywords": keywords,
-        "location": location,
+        "location": "United States",
         "f_TPR": "r2592000",  # last 30 days
         "f_JT": "F",          # full time
-        "format": "rss"
+        "start": 0,
+        "count": 10,
     }
     try:
         r = requests.get(url, headers=HEADERS, params=params, timeout=20)
         if r.status_code != 200:
-            print(f"  LinkedIn RSS error for {company_name}: {r.status_code}")
+            print(f"  LinkedIn error for {company_name}: {r.status_code}")
             return []
-        root = ET.fromstring(r.content)
+
+        # Parse job cards from HTML response
+        html = r.text
         jobs = []
-        ns = {"dc": "http://purl.org/dc/elements/1.1/"}
-        for item in root.findall(".//item"):
-            title = item.findtext("title", "")
-            link = item.findtext("link", "")
-            pub_date = item.findtext("pubDate", "")
-            description = item.findtext("description", "")
-            # LinkedIn RSS includes company in title like "Product Designer at Apple"
+
+        # Extract job titles
+        titles = re.findall(r'class="base-search-card__title"[^>]*>\s*([^<]+)\s*<', html)
+        # Extract company names
+        companies = re.findall(r'class="base-search-card__subtitle"[^>]*>\s*<[^>]+>\s*([^<]+)\s*<', html)
+        # Extract locations
+        locations = re.findall(r'class="job-search-card__location"[^>]*>\s*([^<]+)\s*<', html)
+        # Extract URLs
+        urls = re.findall(r'href="(https://www\.linkedin\.com/jobs/view/[^"?]+)', html)
+
+        for i in range(min(len(titles), len(urls))):
+            loc = locations[i].strip() if i < len(locations) else "United States"
             jobs.append({
-                "title": title,
+                "title": titles[i].strip(),
                 "company": company_name,
-                "location": location,
-                "url": link,
-                "posted_at": pub_date,
-                "description": description
+                "location": loc,
+                "url": urls[i],
+                "posted_at": "",
+                "description": ""
             })
         return jobs
     except Exception as e:
-        print(f"  LinkedIn RSS exception for {company_name}: {e}")
+        print(f"  LinkedIn exception for {company_name}: {e}")
         return []
-
-# ── Filter ────────────────────────────────────────────────────────────────────
-
-WEST_COAST = [
-    "san francisco", "palo alto", "mountain view", "sunnyvale", "santa clara",
-    "cupertino", "menlo park", "redwood city", "san jose", "los angeles",
-    "irvine", "san diego", "california", ", ca", " ca ",
-    "seattle", "bellevue", "redmond", "kirkland", "washington", ", wa",
-    "portland", "oregon", "remote", "united states", "usa", ", us"
-]
-
-def is_west_coast(location):
-    loc = location.lower()
-    return any(place in loc for place in WEST_COAST)
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 
@@ -232,7 +246,7 @@ def build_email(jobs_by_company):
         html += "</ul>"
     html += """<hr style="border:none;border-top:1px solid #eee;margin:20px 0">
 <p style="color:#aaa;font-size:12px">⭐ = wearable, hardware, mapping, GPS, smartwatch, spatial computing, handheld device, outdoor product.<br>
-Greenhouse + Lever + LinkedIn RSS · Runs every Monday at 9 AM CST.</p>
+Greenhouse + Lever + LinkedIn · Runs every Monday at 9 AM CST.</p>
 </body></html>"""
     return html
 
@@ -259,6 +273,7 @@ def main():
     for company_name, company_id in GREENHOUSE_COMPANIES:
         print(f"Fetching Greenhouse: {company_name}...")
         jobs = fetch_greenhouse(company_name, company_id)
+        added = 0
         for j in jobs:
             if j["url"] in seen_urls: continue
             if not is_relevant(j["title"]): continue
@@ -266,13 +281,15 @@ def main():
             seen_urls.add(j["url"])
             j["starred"] = is_specialized(j)
             all_jobs.append(j)
-        print(f"  → {len([j for j in all_jobs if j['company'] == company_name])} relevant roles")
+            added += 1
+        print(f"  → {added} relevant roles (location-filtered from {len(jobs)} total)")
         time.sleep(1)
 
     # Lever
     for company_name, company_id in LEVER_COMPANIES:
         print(f"Fetching Lever: {company_name}...")
         jobs = fetch_lever(company_name, company_id)
+        added = 0
         for j in jobs:
             if j["url"] in seen_urls: continue
             if not is_relevant(j["title"]): continue
@@ -280,20 +297,23 @@ def main():
             seen_urls.add(j["url"])
             j["starred"] = is_specialized(j)
             all_jobs.append(j)
-        print(f"  → {len([j for j in all_jobs if j['company'] == company_name])} relevant roles")
+            added += 1
+        print(f"  → {added} relevant roles (location-filtered from {len(jobs)} total)")
         time.sleep(1)
 
-    # LinkedIn RSS
-    for company_name, keywords, location in LINKEDIN_SEARCHES:
-        print(f"Fetching LinkedIn RSS: {company_name} ({keywords})...")
-        jobs = fetch_linkedin_rss(company_name, keywords, location)
+    # LinkedIn
+    for company_name, keywords in LINKEDIN_SEARCHES:
+        print(f"Fetching LinkedIn: {company_name}...")
+        jobs = fetch_linkedin(company_name, keywords)
+        added = 0
         for j in jobs:
             if j["url"] in seen_urls: continue
             if not is_relevant(j["title"]): continue
             seen_urls.add(j["url"])
             j["starred"] = is_specialized(j)
             all_jobs.append(j)
-        print(f"  → {len(jobs)} results from RSS")
+            added += 1
+        print(f"  → {added} relevant roles from {len(jobs)} results")
         time.sleep(2)
 
     # Group by company
