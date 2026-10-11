@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from html.parser import HTMLParser
 
 TO_EMAIL = "yuerzhu02@gmail.com"
-EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer"]
+EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer", "sr ", "sr.", "lead "]
 KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer"]
 
 SPECIALIZATION_KEYWORDS = [
@@ -309,6 +309,8 @@ def main():
         for j in jobs:
             if j["url"] in seen_urls: continue
             if not is_relevant(j["title"]): continue
+            if not is_west_coast(j["location"]): continue
+            if company_name.lower() not in j["company"].lower(): continue
             seen_urls.add(j["url"])
             j["starred"] = is_specialized(j)
             all_jobs.append(j)
