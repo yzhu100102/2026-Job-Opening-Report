@@ -1,0 +1,45 @@
+[
+  {"company": "Airbnb",     "source": "greenhouse", "id": "airbnb"},
+  {"company": "Figma",      "source": "greenhouse", "id": "figma"},
+  {"company": "Duolingo",   "source": "greenhouse", "id": "duolingo"},
+  {"company": "Stripe",     "source": "greenhouse", "id": "stripe"},
+  {"company": "Lyft",       "source": "greenhouse", "id": "lyft"},
+  {"company": "Dropbox",    "source": "greenhouse", "id": "dropbox"},
+  {"company": "Pinterest",  "source": "greenhouse", "id": "pinterest"},
+  {"company": "Robinhood",  "source": "greenhouse", "id": "robinhood"},
+  {"company": "Waymo",      "source": "greenhouse", "id": "waymo"},
+  {"company": "Coinbase",   "source": "greenhouse", "id": "coinbase"},
+  {"company": "DoorDash",   "source": "greenhouse", "id": "doordashusa"},
+  {"company": "Instacart",  "source": "greenhouse", "id": "instacart"},
+  {"company": "Databricks", "source": "greenhouse", "id": "databricks"},
+  {"company": "Verkada",    "source": "greenhouse", "id": "verkada"},
+  {"company": "Vercel",     "source": "greenhouse", "id": "vercel"},
+  {"company": "Samsara",    "source": "greenhouse", "id": "samsara"},
+  {"company": "Airtable",   "source": "greenhouse", "id": "airtable"},
+  {"company": "Anthropic",  "source": "greenhouse", "id": "anthropic"},
+
+  {"company": "Notion",     "source": "ashby", "id": "notion"},
+  {"company": "OpenAI",     "source": "ashby", "id": "openai"},
+
+  {"company": "Spotify",    "source": "lever", "id": "spotify"},
+
+  {"company": "NVIDIA",     "source": "workday", "url": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"},
+  {"company": "Cisco",      "source": "workday", "url": "https://cisco.wd5.myworkdayjobs.com/Cisco_Careers"},
+  {"company": "Snap",       "source": "workday", "url": "https://snapchat.wd1.myworkdayjobs.com/snap"},
+  {"company": "Adobe",      "source": "workday", "url": "https://adobe.wd5.myworkdayjobs.com/external_experienced"},
+
+  {"company": "Netflix",    "source": "eightfold",  "url": "https://explore.jobs.netflix.net", "domain": "netflix.com"},
+  {"company": "AMD",        "source": "jibe",       "url": "https://careers.amd.com"},
+  {"company": "Intuit",     "source": "talentbrew", "url": "https://jobs.intuit.com"},
+  {"company": "Amazon",     "source": "amazon"},
+  {"company": "Apple",      "source": "apple"},
+
+  {"company": "Google",     "source": "linkedin", "query": "product designer Google"},
+  {"company": "Meta",       "source": "linkedin", "query": "product designer Meta"},
+  {"company": "Microsoft",  "source": "linkedin", "query": "UX designer Microsoft"},
+  {"company": "Uber",       "source": "linkedin", "query": "product designer Uber"},
+  {"company": "Samsung",    "source": "linkedin", "query": "UX designer Samsung"},
+  {"company": "Atlassian",  "source": "linkedin", "query": "product designer Atlassian"},
+  {"company": "Canva",      "source": "linkedin", "query": "product designer Canva"},
+  {"company": "Tesla",      "source": "linkedin", "query": "product designer Tesla"}
+]

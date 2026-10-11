@@ -3,7 +3,7 @@
 Scrapes product/UX designer job listings from 20+ big tech companies every Monday and emails a digest to yuerzhu02@gmail.com.
 
 ## Companies covered
-Airbnb, Amazon, Airtable, Apple, Dropbox, Duolingo, Figma, Google, Lyft, Meta, Microsoft, Netflix, Notion, Pinterest, Rivian, Robinhood, Samsung, Snap, Spotify, Stripe, Twitch, Waymo
+See [`companies.json`](companies.json) — one line per company.
 
 ## Setup (one-time, ~5 minutes)
 
@@ -43,7 +43,23 @@ In your GitHub repo:
 Runs automatically every **Monday at 9 AM CST**.
 
 ## Customise
+**Add/remove companies** in `companies.json`. Each entry names the career-site platform (`source`):
+
+| source | Example career URL | Fields |
+|---|---|---|
+| `greenhouse` | `job-boards.greenhouse.io/verkada` | `"id": "verkada"` |
+| `lever` | `jobs.lever.co/spotify` | `"id": "spotify"` |
+| `ashby` | `jobs.ashbyhq.com/notion` | `"id": "notion"` |
+| `workday` | `nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite` | `"url": "<that URL>"` |
+| `eightfold` | `explore.jobs.netflix.net` | `"url"`, `"domain": "netflix.com"` |
+| `jibe` | `careers.amd.com` | `"url"` |
+| `talentbrew` | `jobs.intuit.com` | `"url"` |
+| `amazon` | `amazon.jobs` | — |
+| `apple` | `jobs.apple.com` | — |
+| `linkedin` | fallback for sites that block scraping | `"query": "product designer Tesla"` |
+
+Test locally without sending email: `python scraper.py --dry-run`
+
 Edit `scraper.py` to:
-- Add/remove companies (look for the `COMPANIES` list)
 - Change keywords (look for `KEYWORDS`)
 - Adjust filters (look for `EXCLUDE` to block senior/director roles)

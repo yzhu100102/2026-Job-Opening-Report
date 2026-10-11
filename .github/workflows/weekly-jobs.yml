@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "0 14 * * 1"   # Every Monday at 9 AM CST (14:00 UTC)
   workflow_dispatch:         # Also lets you run it manually from GitHub
+    inputs:
+      to_email:
+        description: "Send to this address instead of the default (leave blank for default)"
+        required: false
+      region:
+        description: "Location filter"
+        type: choice
+        options: [west-coast, bay-area]
+        default: west-coast
 
 jobs:
   scrape-and-email:
@@ -26,4 +35,6 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          TO_EMAIL: ${{ inputs.to_email }}
+          REGION: ${{ inputs.region }}
         run: python scraper.py
