@@ -460,7 +460,7 @@ def build_email(jobs_by_company, region_label):
     starred_count = sum(1 for j in all_jobs if j.get("starred"))
     date_str = datetime.now().strftime("%B %d, %Y")
     html = f"""<html><body style="font-family:sans-serif;color:#222;max-width:700px;margin:auto;padding:24px">
-<h2>🎨 Weekly Design Job Digest — {date_str}</h2>
+<h2>🎨 Design Job Digest — {date_str}</h2>
 <p>{total} roles found · <b>⭐ {starred_count} match your specializations</b></p>
 <p style="color:#888;font-size:13px">Product/UX/Interaction Designer · {region_label} · Mid-level · ⭐ = wearable / hardware / mapping / GPS / spatial</p>
 <hr style="border:none;border-top:1px solid #eee;margin:20px 0">"""
@@ -477,7 +477,7 @@ def build_email(jobs_by_company, region_label):
         html += "</ul>"
     html += """<hr style="border:none;border-top:1px solid #eee;margin:20px 0">
 <p style="color:#aaa;font-size:12px">⭐ = wearable, hardware, mapping, GPS, smartwatch, spatial computing, handheld device, outdoor product.<br>
-Company career sites + LinkedIn · Runs every Monday at 9 AM CST.</p>
+Company career sites + LinkedIn · Runs weekdays at 6:30 AM PT.</p>
 </body></html>"""
     return html
 
@@ -485,7 +485,7 @@ def send_email(html_body, to_email):
     from_email = os.environ["GMAIL_USER"]
     app_password = os.environ["GMAIL_APP_PASSWORD"]
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🎨 Weekly Design Jobs — {datetime.now().strftime('%b %d')}"
+    msg["Subject"] = f"🎨 Design Jobs — {datetime.now().strftime('%b %d')}"
     msg["From"] = from_email
     msg["To"] = to_email
     msg.attach(MIMEText(html_body, "html"))

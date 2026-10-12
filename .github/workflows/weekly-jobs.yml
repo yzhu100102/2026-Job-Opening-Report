@@ -1,40 +1,61 @@
-name: Weekly Design Job Digest
+name: Daily Design Job Digest
 
 on:
   schedule:
-    - cron: "0 14 * * 1"   # Every Monday at 9 AM CST (14:00 UTC)
+    # Weekdays at 6:30 AM Pacific. GitHub cron is UTC-only, so schedule both the
+    # daylight-time (13:30 UTC) and standard-time (14:30 UTC) slots; the first step
+    # skips whichever one doesn't match California's current offset.
+    - cron: "30 13 * * 1-5"
+    - cron: "30 14 * * 1-5"
   workflow_dispatch:         # Also lets you run it manually from GitHub
     inputs:
       to_email:
         description: "Send to this address instead of the default (leave blank for default)"
         required: false
       region:
-        description: "Location filter"
+        description: "Location filter (default = the REGION repo variable)"
         type: choice
-        options: [west-coast, bay-area]
-        default: west-coast
+        options: [default, west-coast, bay-area]
+        default: default
 
 jobs:
   scrape-and-email:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check it's 6:30 AM Pacific
+        id: gate
+        run: |
+          offset=$(TZ=America/Los_Angeles date +%z)
+          case "${{ github.event.schedule }}:$offset" in
+            "30 13 * * 1-5:-0800"|"30 14 * * 1-5:-0700")
+              echo "Pacific offset is $offset — this slot isn't 6:30 AM, skipping"
+              echo "run=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "run=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Checkout repo
+        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: pip install requests
 
       - name: Run scraper
+        if: steps.gate.outputs.run == 'true'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
-          TO_EMAIL: ${{ inputs.to_email }}
-          REGION: ${{ inputs.region }}
+          # Recipient and region come from repo variables (Settings → Secrets and
+          # variables → Actions → Variables); manual runs can override them.
+          TO_EMAIL: ${{ inputs.to_email || vars.TO_EMAIL }}
+          REGION: ${{ (inputs.region != 'default' && inputs.region) || vars.REGION }}
         run: python scraper.py

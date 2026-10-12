@@ -1,6 +1,6 @@
-# 🎨 Weekly Design Job Digest
+# 🎨 Daily Design Job Digest
 
-Scrapes product/UX designer job listings from 20+ big tech companies every Monday and emails a digest to yuerzhu02@gmail.com.
+Scrapes product/UX designer job listings from 30+ tech companies every weekday morning and emails a digest to the address in the `TO_EMAIL` repo variable.
 
 ## Companies covered
 See [`companies.json`](companies.json) — one line per company.
@@ -36,11 +36,15 @@ In your GitHub repo:
 - If prompted, click **"I understand my workflows, go ahead and enable them"**
 
 ### 5. Test it manually
-- Go to **Actions → Weekly Design Job Digest → Run workflow**
+- Go to **Actions → Daily Design Job Digest → Run workflow**
 - Check your inbox in ~2 minutes
 
 ## Schedule
-Runs automatically every **Monday at 9 AM CST**.
+Runs automatically every **weekday at 6:30 AM Pacific** (adjusts for daylight saving).
+
+Set the recipient and location filter as repo variables under **Settings → Secrets and variables → Actions → Variables**:
+- `TO_EMAIL` — who gets the digest
+- `REGION` — `bay-area` or `west-coast`
 
 ## Customise
 **Add/remove companies** in `companies.json`. Each entry names the career-site platform (`source`):
