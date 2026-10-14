@@ -13,8 +13,9 @@ from html.parser import HTMLParser
 
 # Default recipient — override with the TO_EMAIL env var or --to (comma-separate multiple addresses)
 DEFAULT_TO_EMAIL = "yuerzhu02@gmail.com"
-EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer", "sr ", "sr.", "lead "]
-KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer"]
+EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer", "sr ", "sr.", "lead ",
+           "learning experience", "instructional", "customer experience designer"]
+KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer", "experience designer"]
 
 SPECIALIZATION_KEYWORDS = [
     "wearable", "wearables", "hardware", "physical product",
@@ -32,23 +33,23 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.5",
 }
 
-WEST_COAST = [
+BAY_AREA = [
     "san francisco", "palo alto", "mountain view", "sunnyvale", "santa clara",
-    "cupertino", "menlo park", "redwood city", "san jose", "los angeles",
-    "irvine", "san diego", "california", ", ca", " ca,", "(ca)",
-    "culver city", "santa monica", "playa vista", "los gatos", "san mateo", "burlingame",
-    "foster city", "oakland", "emeryville", "berkeley", "south san francisco",
+    "cupertino", "menlo park", "redwood city", "san jose", "los gatos", "san mateo",
+    "burlingame", "foster city", "oakland", "emeryville", "berkeley", "south san francisco",
+    "san carlos", "belmont", "san bruno", "los altos", "milpitas", "fremont", "newark, ca",
+    "hayward", "alameda", "pleasanton", "san ramon", "walnut creek",
+    "bay area", "ssf", " sf"  # e.g. "Aviary - SSF", "Strava SF"
+]
+
+WEST_COAST = BAY_AREA + [
+    "los angeles", "irvine", "san diego", "california", ", ca", " ca,", "(ca)",
+    "culver city", "santa monica", "playa vista",
     "seattle", "bellevue", "redmond", "kirkland", "washington", ", wa", " wa,",
     "portland", "oregon", ", or", "remote", "united states", "usa", ", us,",
     "anywhere", "distributed", "hybrid"
 ]
 
-BAY_AREA = [
-    "san francisco", "palo alto", "mountain view", "sunnyvale", "santa clara",
-    "cupertino", "menlo park", "redwood city", "san jose", "los gatos", "san mateo",
-    "burlingame", "foster city", "oakland", "emeryville", "berkeley", "south san francisco",
-    "bay area"
-]
 
 # Region filters — pick with the REGION env var or --region
 REGIONS = {
