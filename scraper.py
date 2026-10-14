@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 
-# Default recipient — override with the TO_EMAIL env var or --to
+# Default recipient — override with the TO_EMAIL env var or --to (comma-separate multiple addresses)
 DEFAULT_TO_EMAIL = "yuerzhu02@gmail.com"
 EXCLUDE = ["principal", "director", "head of", "vp ", "senior", "staff", "lead designer", "sr ", "sr.", "lead "]
 KEYWORDS = ["product designer", "ux designer", "interaction designer", "ui designer"]
@@ -507,18 +507,19 @@ Company career sites + LinkedIn · Runs weekdays at 6:30 AM PT.</p>
 </body></html>"""
     return html
 
-def send_email(html_body, to_email):
+def send_email(html_body, to_emails):
+    recipients = [e.strip() for e in to_emails.split(",") if e.strip()]
     from_email = os.environ["GMAIL_USER"]
     app_password = os.environ["GMAIL_APP_PASSWORD"]
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"🎨 Design Jobs — {datetime.now().strftime('%b %d')}"
     msg["From"] = from_email
-    msg["To"] = to_email
+    msg["To"] = ", ".join(recipients)
     msg.attach(MIMEText(html_body, "html"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(from_email, app_password)
-        server.sendmail(from_email, to_email, msg.as_string())
-    print(f"✅ Email sent to {to_email}")
+        server.sendmail(from_email, recipients, msg.as_string())
+    print(f"✅ Email sent to {', '.join(recipients)}")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 

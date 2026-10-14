@@ -45,7 +45,7 @@ Runs automatically every **weekday at 6:30 AM Pacific** (adjusts for daylight sa
 Each job is only emailed once. Already-reported jobs are tracked in `seen_jobs.json` on the `seen-jobs` branch (updated by the workflow); if there's nothing new, no email is sent. Delete that branch to start fresh. Manual runs with a custom `to_email` are treated as tests — they include every matching job and don't update the history.
 
 Set the recipient and location filter as repo variables under **Settings → Secrets and variables → Actions → Variables**:
-- `TO_EMAIL` — who gets the digest
+- `TO_EMAIL` — who gets the digest (comma-separate multiple addresses)
 - `REGION` — `bay-area` or `west-coast`
 
 ## Customise
