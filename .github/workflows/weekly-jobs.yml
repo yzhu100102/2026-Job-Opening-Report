@@ -2,11 +2,14 @@ name: Daily Design Job Digest
 
 on:
   schedule:
-    # Weekdays at 6:30 AM Pacific. GitHub cron is UTC-only, so schedule both the
-    # daylight-time (13:30 UTC) and standard-time (14:30 UTC) slots; the first step
-    # skips whichever one doesn't match California's current offset.
-    - cron: "30 13 * * 1-5"
-    - cron: "30 14 * * 1-5"
+    # GitHub cron is UTC-only. These slots cover the daylight and standard-time UTC
+    # equivalents of each send time in use; schedule_gate.py lets through only the one
+    # matching the SEND_TIME / SEND_TZ / SEND_DAYS repo variables (default: 9:00 AM
+    # Central, every day). Using a new send time? Add its two UTC slots here.
+    - cron: "0 14 * * *"    # 9:00 AM Central (daylight)
+    - cron: "0 15 * * *"    # 9:00 AM Central (standard)
+    - cron: "30 13 * * *"   # 6:30 AM Pacific (daylight)
+    - cron: "30 14 * * *"   # 6:30 AM Pacific (standard)
   workflow_dispatch:         # Also lets you run it manually from GitHub
     inputs:
       to_email:
@@ -30,21 +33,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check it's 6:30 AM Pacific
-        id: gate
-        run: |
-          offset=$(TZ=America/Los_Angeles date +%z)
-          case "${{ github.event.schedule }}:$offset" in
-            "30 13 * * 1-5:-0800"|"30 14 * * 1-5:-0700")
-              echo "Pacific offset is $offset — this slot isn't 6:30 AM, skipping"
-              echo "run=false" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "run=true" >> "$GITHUB_OUTPUT" ;;
-          esac
-
       - name: Checkout repo
-        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
+
+      - name: Check send time
+        id: gate
+        env:
+          CRON: ${{ github.event.schedule }}
+          SEND_TIME: ${{ vars.SEND_TIME }}
+          SEND_TZ: ${{ vars.SEND_TZ }}
+          SEND_DAYS: ${{ vars.SEND_DAYS }}
+        run: python3 schedule_gate.py
 
       - name: Set up Python
         if: steps.gate.outputs.run == 'true'

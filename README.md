@@ -40,13 +40,14 @@ In your GitHub repo:
 - Check your inbox in ~2 minutes
 
 ## Schedule
-Runs automatically every **weekday at 6:30 AM Pacific** (adjusts for daylight saving).
+Runs automatically every day at **9:00 AM Central** by default (adjusts for daylight saving).
 
 Each job is only emailed once. Already-reported jobs are tracked in `seen_jobs.json` on the `seen-jobs` branch (updated by the workflow); if there's nothing new, no email is sent. Delete that branch to start fresh. Manual runs with a custom `to_email` are treated as tests — they include every matching job and don't update the history.
 
 Set the recipient and location filter as repo variables under **Settings → Secrets and variables → Actions → Variables**:
 - `TO_EMAIL` — who gets the digest (comma-separate multiple addresses)
 - `REGION` — `bay-area` or `west-coast`
+- `SEND_TIME` / `SEND_TZ` / `SEND_DAYS` — when to send, e.g. `06:30` / `America/Los_Angeles` / `weekdays` (defaults `09:00` / `America/Chicago` / `daily`). A time other than 9:00 AM Central or 6:30 AM Pacific also needs its UTC slots added to the `cron` list in the workflow.
 
 ## Customise
 **Add/remove companies** in `companies.json`. Each entry names the career-site platform (`source`):
