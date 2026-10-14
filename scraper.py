@@ -8,7 +8,7 @@ import json
 import html as htmllib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 
 # Default recipient — override with the TO_EMAIL env var or --to
@@ -58,6 +58,11 @@ REGIONS = {
 
 # Companies to scrape live in companies.json — one line per company.
 COMPANIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "companies.json")
+
+# Jobs already emailed, so each one is only reported once. The workflow commits this file back to the repo.
+SEEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seen_jobs.json")
+# Forget a job once it hasn't appeared in any scan for this long (it was probably filled)
+SEEN_EXPIRY_DAYS = 60
 
 # Search term sent to career sites that support keyword search (every KEYWORDS entry contains it)
 SEARCH_TERM = "designer"
@@ -452,6 +457,27 @@ FETCHERS = {
     "linkedin":   lambda c: fetch_linkedin(c["company"], c["query"]),
 }
 
+# ── Seen jobs ─────────────────────────────────────────────────────────────────
+
+def load_seen():
+    try:
+        with open(SEEN_FILE) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_seen(seen, current_jobs):
+    """Mark current jobs as seen today and drop ones not seen in SEEN_EXPIRY_DAYS."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for j in current_jobs:
+        entry = seen.setdefault(j["url"], {"company": j["company"], "title": j["title"], "first_seen": today})
+        entry["last_seen"] = today
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=SEEN_EXPIRY_DAYS)).strftime("%Y-%m-%d")
+    seen = {url: e for url, e in seen.items() if e.get("last_seen", today) >= cutoff}
+    with open(SEEN_FILE, "w") as f:
+        json.dump(dict(sorted(seen.items())), f, indent=1)
+    print(f"Recorded {len(seen)} seen jobs in {os.path.basename(SEEN_FILE)}")
+
 # ── Email ─────────────────────────────────────────────────────────────────────
 
 def build_email(jobs_by_company, region_label):
@@ -461,7 +487,7 @@ def build_email(jobs_by_company, region_label):
     date_str = datetime.now().strftime("%B %d, %Y")
     html = f"""<html><body style="font-family:sans-serif;color:#222;max-width:700px;margin:auto;padding:24px">
 <h2>🎨 Design Job Digest — {date_str}</h2>
-<p>{total} roles found · <b>⭐ {starred_count} match your specializations</b></p>
+<p>{total} new roles since the last digest · <b>⭐ {starred_count} match your specializations</b></p>
 <p style="color:#888;font-size:13px">Product/UX/Interaction Designer · {region_label} · Mid-level · ⭐ = wearable / hardware / mapping / GPS / spatial</p>
 <hr style="border:none;border-top:1px solid #eee;margin:20px 0">"""
     for company, jobs in sorted(jobs_by_company.items()):
@@ -501,6 +527,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="print results instead of emailing")
     parser.add_argument("--to", default=os.environ.get("TO_EMAIL") or DEFAULT_TO_EMAIL)
     parser.add_argument("--region", default=os.environ.get("REGION") or "west-coast", choices=REGIONS)
+    parser.add_argument("--ignore-seen", action="store_true",
+                        help="report every matching job and don't update seen_jobs.json (for one-off test sends)")
     args = parser.parse_args()
     region_label, region_places = REGIONS[args.region]
     with open(COMPANIES_FILE) as f:
@@ -528,25 +556,35 @@ def main():
         print(f"  → {added} relevant roles (filtered from {len(jobs)} total)")
         time.sleep(2 if source == "linkedin" else 1)
 
+    # Drop jobs already reported in a previous scan
+    seen = {} if args.ignore_seen else load_seen()
+    new_jobs = [j for j in all_jobs if j["url"] not in seen]
+    print(f"\n{len(all_jobs) - len(new_jobs)} of {len(all_jobs)} roles were already reported")
+
     # Group by company
     jobs_by_company = {}
-    for j in all_jobs:
+    for j in new_jobs:
         company = j["company"]
         if company not in jobs_by_company:
             jobs_by_company[company] = []
         jobs_by_company[company].append(j)
 
-    print(f"\nTotal: {len(all_jobs)} roles across {len(jobs_by_company)} companies")
+    print(f"New: {len(new_jobs)} roles across {len(jobs_by_company)} companies")
 
     if args.dry_run:
         for company, jobs in jobs_by_company.items():
             for j in jobs:
                 print(f"  {'★ ' if j['starred'] else ''}{company}: {j['title']} — {j['location']} — {j['url']}")
-    elif jobs_by_company:
+        return
+    if jobs_by_company:
         html = build_email(jobs_by_company, region_label)
         send_email(html, args.to)
     else:
-        print("No relevant jobs found this week.")
+        print("No new jobs since the last scan — no email sent.")
+    # Record only after a successful send, so a failed email doesn't swallow jobs.
+    # Every currently listed job is refreshed so it stays remembered while still open.
+    if not args.ignore_seen:
+        save_seen(seen, all_jobs)
 
 if __name__ == "__main__":
     main()

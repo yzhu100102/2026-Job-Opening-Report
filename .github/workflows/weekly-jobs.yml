@@ -18,6 +18,13 @@ on:
         options: [default, west-coast, bay-area]
         default: default
 
+# Lets the workflow save seen_jobs.json to the seen-jobs branch
+permissions:
+  contents: write
+
+# Don't let two runs update seen_jobs.json at the same time
+concurrency: job-digest
+
 jobs:
   scrape-and-email:
     runs-on: ubuntu-latest
@@ -49,6 +56,17 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pip install requests
 
+      # Already-reported jobs live on a separate seen-jobs branch so main stays code-only
+      # (and each repo that runs this keeps its own history)
+      - name: Load seen jobs
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if git fetch --depth=1 origin seen-jobs 2>/dev/null; then
+            git show FETCH_HEAD:seen_jobs.json > seen_jobs.json
+          else
+            echo "No seen-jobs branch yet — first run reports every matching job"
+          fi
+
       - name: Run scraper
         if: steps.gate.outputs.run == 'true'
         env:
@@ -58,4 +76,31 @@ jobs:
           # variables → Actions → Variables); manual runs can override them.
           TO_EMAIL: ${{ inputs.to_email || vars.TO_EMAIL }}
           REGION: ${{ (inputs.region != 'default' && inputs.region) || vars.REGION }}
-        run: python scraper.py
+          # A manual run to a different address is a one-off test: report every
+          # matching job and leave seen_jobs.json alone
+          IGNORE_SEEN: ${{ inputs.to_email != '' && inputs.to_email != null }}
+        run: |
+          if [ "$IGNORE_SEEN" = "true" ]; then
+            python scraper.py --ignore-seen
+          else
+            python scraper.py
+          fi
+
+      - name: Save seen jobs
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          [ -f seen_jobs.json ] || exit 0
+          mv seen_jobs.json "$RUNNER_TEMP/seen_jobs.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin seen-jobs 2>/dev/null; then
+            git checkout -q -B seen-jobs FETCH_HEAD
+          else
+            git checkout -q --orphan seen-jobs
+            git rm -rq --cached .
+          fi
+          cp "$RUNNER_TEMP/seen_jobs.json" seen_jobs.json
+          git add seen_jobs.json
+          git diff --cached --quiet && exit 0
+          git commit -qm "Update seen jobs"
+          git push origin seen-jobs
