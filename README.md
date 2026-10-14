@@ -1,9 +1,16 @@
 # 🎨 Daily Design Job Digest
 
-Scrapes product/UX designer job listings from 30+ tech companies every weekday morning and emails a digest to the address in the `TO_EMAIL` repo variable.
+Scrapes product/UX designer job listings from 76 tech companies every morning and emails a digest of **new** roles to the address(es) in the `TO_EMAIL` repo variable.
 
-## Companies covered
-See [`companies.json`](companies.json) — one line per company.
+## Companies covered (76)
+- **Hardware, wearables, spatial & autonomy:** 1X, Applied Intuition, Eight Sleep, Logitech, Lucid Motors, Neuralink, Niantic Spatial, Nuro, Oura, Samsara, Sesame, Skydio, Tesla, Verkada, Waymo, Zipline, Zoox
+- **Big tech:** Adobe, Amazon, AMD, Apple, Cisco, Google, Intuit, Meta, Microsoft, Netflix, NVIDIA, Salesforce, Samsung
+- **AI:** Anthropic, Cursor, Glean, Harvey, OpenAI, Perplexity, Scale AI, Sierra, Suno
+- **Consumer & social:** Airbnb, Discord, DoorDash, Duolingo, eBay, Instacart, Lyft, Nextdoor, Pinterest, Reddit, Roblox, Snap, Spotify, Strava, Uber
+- **Fintech:** Brex, Chime, Coinbase, Gusto, PayPal, Plaid, Ramp, Robinhood, Stripe
+- **Productivity, dev tools & enterprise:** Airtable, Asana, Atlassian, Autodesk, Canva, Databricks, Dropbox, Faire, Figma, Flexport, Notion, Vercel, Workday
+
+To add or remove one, edit [`companies.json`](companies.json) (see [Customise](#customise)).
 
 ## Setup (one-time, ~5 minutes)
 
@@ -42,12 +49,17 @@ In your GitHub repo:
 ## Schedule
 Runs automatically every day at **9:00 AM Central** by default (adjusts for daylight saving).
 
-Each job is only emailed once. Already-reported jobs are tracked in `seen_jobs.json` on the `seen-jobs` branch (updated by the workflow); if there's nothing new, no email is sent. Delete that branch to start fresh. Manual runs with a custom `to_email` are treated as tests — they include every matching job and don't update the history.
-
 Set the recipient and location filter as repo variables under **Settings → Secrets and variables → Actions → Variables**:
 - `TO_EMAIL` — who gets the digest (comma-separate multiple addresses)
 - `REGION` — `bay-area` or `west-coast`
 - `SEND_TIME` / `SEND_TZ` / `SEND_DAYS` — when to send, e.g. `06:30` / `America/Los_Angeles` / `weekdays` (defaults `09:00` / `America/Chicago` / `daily`). A time other than 9:00 AM Central or 6:30 AM Pacific also needs its UTC slots added to the `cron` list in the workflow.
+
+## How the history check works
+Each job is emailed only once. Every run loads `seen_jobs.json` from the repo's `seen-jobs` branch, drops any job whose link is already in it, emails the rest, and then saves the link of every job found in that scan back to the branch. Jobs stay remembered while they're still listed and are forgotten after 60 days without appearing in a scan (usually because they were filled), so a job is never re-reported just because a site failed to load for a day.
+
+- No new jobs → no email that day.
+- The very first run (or after deleting the `seen-jobs` branch) reports every current match.
+- Manual runs with a custom `to_email` are treated as tests: they include every matching job and don't update the history.
 
 ## Customise
 **Add/remove companies** in `companies.json`. Each entry names the career-site platform (`source`):
