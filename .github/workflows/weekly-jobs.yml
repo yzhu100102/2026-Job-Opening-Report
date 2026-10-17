@@ -99,7 +99,7 @@ jobs:
             git rm -rq --cached .
           fi
           cp "$RUNNER_TEMP/seen_jobs.json" seen_jobs.json
-          git add seen_jobs.json
+          git add -f seen_jobs.json   # -f: it's in .gitignore so it never lands on main
           git diff --cached --quiet && exit 0
           git commit -qm "Update seen jobs"
           git push origin seen-jobs

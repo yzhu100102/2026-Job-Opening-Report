@@ -132,7 +132,8 @@ def fetch_greenhouse(company_name, company_id):
                 "company": company_name,
                 "location": location,
                 "url": j.get("absolute_url", ""),
-                "posted_at": j.get("updated_at", ""),
+                # updated_at changes on any edit; first_published is the original posting date
+                "posted_at": j.get("first_published") or j.get("updated_at", ""),
                 "description": j.get("content", "")
             })
         return jobs
